@@ -1,0 +1,235 @@
+% This code is to be run after Joris_Colocalization_(trial1?)_XXXX
+% With this code, the goal is to establish pizels in the image above background, 
+% then discretize those in bins.
+
+clear all
+close all
+
+% first, we load in the data
+load('workspace.mat')
+clearvars -except raw_GFP_int_1D raw_zpos_int_1D_abs raw_zpos_int_1D x_limits ylimits GFPdata zposdata %remove all the ancialliary data
+
+sigma = 5;%how many sigmas above bckground is considered data.
+displacement_thresh = 0.5;%height cutoff to determine large displacements
+
+% Histogram the raw GFP pixel intensities -> remove background!
+[GFP_data_hist, GFP_data_hist_bins]= histcounts(raw_GFP_int_1D,100); %devided input data in 100 groups
+GFP_data_hist_bins_sliced = GFP_data_hist_bins(2:end);%always 1 more binedge than bins...
+Gaussfit_bckground = fit(GFP_data_hist_bins_sliced',GFP_data_hist','gauss1');
+% The vast majority of pixels are background, so the histcounts has a major
+% peak at this position, which we fit. We use the average and sigma to
+% compute a minimum fluorescence threshold level to distinguish sample from
+% background. (Works on CLSM-2, PCC group Wageningen, Data Jochem)
+
+% Show the fit.
+figure
+plot(Gaussfit_bckground)
+hold on
+plot(GFP_data_hist_bins_sliced',GFP_data_hist','o')
+% pause (2)
+close all
+
+% retrieve average, sigma and compute threshold.
+Gaussfit_bckground_coeff = coeffvalues(Gaussfit_bckground);
+Gaussfit_bckground_avg = Gaussfit_bckground_coeff(2);
+Gaussfit_bckground_sigma = Gaussfit_bckground_coeff(3);
+Fluorescence_threshold = Gaussfit_bckground_avg+sigma*Gaussfit_bckground_sigma;
+disp(['The Fluorescence threshold = ',num2str(Fluorescence_threshold),' for sigma = ',num2str(sigma),'x ',num2str(Gaussfit_bckground_sigma)])
+
+% not select the data to be analysed above threshold from both raw datasets
+filter_above_thresh = raw_GFP_int_1D > Fluorescence_threshold;
+Fluofiltered_GFP_int_1D = raw_GFP_int_1D(filter_above_thresh);
+Fluofiltered_zpos_int_1D = raw_zpos_int_1D(filter_above_thresh);
+
+plot(Fluofiltered_zpos_int_1D,Fluofiltered_GFP_int_1D,'o');
+% pause(2)
+close all
+
+% The fluorescence data needs to renormalised to compare samples:
+Fluofiltered_Renorm_GFP_int_1D = Fluofiltered_GFP_int_1D./mean(Fluofiltered_GFP_int_1D);
+
+figure
+plot(Fluofiltered_zpos_int_1D,Fluofiltered_Renorm_GFP_int_1D,'o')
+set(gca, 'XDir', 'reverse')
+% pause(2)
+
+% now we save the data that is from the cells of both fluorescence and
+% displacement, to aggregate this data later on (first per cell, and then
+% all together. We use the relative fluorescence to ensure compare of cells
+% at different timepoints, and to compare all data together.
+tb_saved = [Fluofiltered_Renorm_GFP_int_1D,Fluofiltered_zpos_int_1D];
+cut_off_value = strsplit(num2str(max(x_limits)),'.');
+save_name_data = ['DataCell_FluoRenorm_zpos_sigma_',num2str(sigma),'_cutoffneg_',cut_off_value{1},'p',cut_off_value{2},'.mat'];
+% save(save_name_data,'tb_saved')
+
+bins = [-5:1:2]-0.5;
+[selection_list_data] = discretize(Fluofiltered_zpos_int_1D,bins);
+% selection_mask = nan(length(bins)-1,length(selection_list_data));
+% for i = 1:length(bins)-1 % we now generate the selection masks for the data from the discretize
+%     final_data_boxplot{i,:} = Fluofiltered_zpos_int_1D(selection_list_data==i);
+% end
+% final_data_boxplot{3,:}
+figure
+boxplot(Fluofiltered_Renorm_GFP_int_1D,selection_list_data)
+set(gca,'XTickLabel',bins-max(bins)+2 ) % works for bins=[-5:1:2], unsure for others...
+set(gca, 'XDir', 'reverse')
+xlabel('Bincentre (+- .5 micron)')
+ylabel('Relative fluorescence intensity (a.u.)')
+save_name_plot = ['PlotCellBox_FluoRenorm_zpos_sigma_',num2str(sigma),'_cutoffneg_',cut_off_value{1},'p',cut_off_value{2},'.tif'];
+% print(gcf,'-dtiff', '-r600', save_name_plot);
+
+
+
+%% Part 2 Tip focussing of actin during invasion %%
+
+% We run a similar analysis as before, but break up the data into 2 groups.
+% Group 1 is displacements above -.5 micron (so stationairy/adhesive
+% points). Group 2 is displacements below -.5 micron (indentation at the
+% tip).
+
+% we have already defined some x_limits from the past script step called
+% x_limits. We take the smallest (-.5 micron value)
+disp(['displacement threshold is ',num2str(min(x_limits))])
+Prt2_above_disp_thresh = Fluofiltered_zpos_int_1D>min(x_limits);
+Prt2_below_disp_thresh = Fluofiltered_zpos_int_1D<min(x_limits);
+
+Prt2_Fluo_above_disp_thresh = Fluofiltered_Renorm_GFP_int_1D(Prt2_above_disp_thresh);
+Prt2_Fluo_below_disp_thresh = Fluofiltered_Renorm_GFP_int_1D(Prt2_below_disp_thresh);
+
+figure; hold on;
+histogram(Prt2_Fluo_above_disp_thresh,'FaceAlpha',0.4)
+histogram(Prt2_Fluo_below_disp_thresh,'FaceAlpha',0.4)
+xlabel('Rel Fluo Intensity')
+ylabel('N (obs)')
+title('Blauw > -.5, Rood <-.5')
+box on
+close all
+
+[h,p,ci,stats] = ttest2(Prt2_Fluo_above_disp_thresh,Prt2_Fluo_below_disp_thresh);
+% h=1 -> two input distributions are unequal
+ 
+save_name_data_test_tip = ['DataCell_FluoRenormAbove_FluoRenormBelow_ForTipAnalysis_cutoffneg_',cut_off_value{1},'p',cut_off_value{2},'.mat'];
+save(save_name_data_test_tip,'Prt2_Fluo_above_disp_thresh','Prt2_Fluo_below_disp_thresh');
+save_name_results_test_tip = ['DataCell_FluoRenormAbove_FluoRenormBelow_ForTipAnalysis_cutoffneg_',cut_off_value{1},'p',cut_off_value{2},'ResultsTtest2.mat'];
+save(save_name_results_test_tip,'h','p','ci','stats');
+
+% Below are 2 tests nor mormality for both sets, if needed.
+% Pop_above_normal = kstest(Prt2_Fluo_above_disp_thresh);%check data is normal
+% Pop_below_normal = kstest(Prt2_Fluo_below_disp_thresh);%check data is normal
+
+close all
+
+%% Part 3 Difference adhesion, indentation, central%%
+
+
+disp(['displacement thresholds are ',num2str(min(x_limits)),' and ',num2str(max(x_limits))])
+Prt3_above_disp_thresh = Fluofiltered_zpos_int_1D>max(x_limits);
+Prt3_between_disps_trheshs = Fluofiltered_zpos_int_1D<max(x_limits)&Fluofiltered_zpos_int_1D>min(x_limits);
+Prt3_below_disp_thresh = Fluofiltered_zpos_int_1D<min(x_limits);
+
+Prt3_Fluo_above_disp_thresh = Fluofiltered_Renorm_GFP_int_1D(Prt3_above_disp_thresh);%adhesion site
+Prt3_Fluo_between_disp_thresh = Fluofiltered_Renorm_GFP_int_1D(Prt3_between_disps_trheshs);%general cell
+Prt3_Fluo_below_disp_thresh = Fluofiltered_Renorm_GFP_int_1D(Prt3_below_disp_thresh);%indentation site
+
+%for saving, the names
+cutoff_val_2 = strsplit(num2str(min(x_limits)),'.');
+cutoff_val_3 = strsplit(num2str(max(x_limits)),'.');
+
+% Uncomment these to check the conditionals
+figure;hold on;
+scatter(Fluofiltered_zpos_int_1D(Prt3_above_disp_thresh),Prt3_Fluo_above_disp_thresh)
+scatter(Fluofiltered_zpos_int_1D(Prt3_between_disps_trheshs),Prt3_Fluo_between_disp_thresh)
+scatter(Fluofiltered_zpos_int_1D(Prt3_below_disp_thresh),Prt3_Fluo_below_disp_thresh)
+box on
+set(gca, 'XDir', 'reverse')
+title('Below between Above threshold plot')
+% pause (1)
+save_name_plot2 = ['ImagePlot_FluoRenormAbove_FluoRenormBetween_FluoRenormBelow_ForTtests_cutoffpos_',cutoff_val_3{1},'p',cutoff_val_3{2},'_cutoffneg_',cutoff_val_2{1},'p',cutoff_val_2{2},'.tif'];
+save_name_plot2 = strrep(save_name_plot2,'-','minus');
+print(gcf,'-dtiff', '-r600', save_name_plot2)
+close all
+
+% Test 1: are the fluorescence distris for adhesive (above) significantly
+% different then indentive (below). If so, actin activity in the tip is
+% very different then at the adhesion site, just a few microns away...
+[h2,p2,ci2,stats2] = ttest2(Prt3_Fluo_above_disp_thresh,Prt3_Fluo_below_disp_thresh);
+% h=1 -> two input distributions are unequal
+save_name_data_test_tip2 = ['DataCell_FluoRenormAbove_FluoRenormAbove_FluoRenormBelow_ForTtests_cutoffpos_',cutoff_val_3{1},'p',cutoff_val_3{2},'_cutoffneg_',cutoff_val_2{1},'p',cutoff_val_2{2},'.mat'];
+save_name_data_test_tip2 = strrep(save_name_data_test_tip2,'-','minus');
+save(save_name_data_test_tip2,'Prt3_Fluo_above_disp_thresh','Prt3_Fluo_between_disp_thresh','Prt3_Fluo_below_disp_thresh');
+save_name_results_test_tip2 = ['DataCell_FluoRenormAbove_FluoRenormAbove_FluoRenormBelow_ForTtests_cutoffpos_',cutoff_val_3{1},'p',cutoff_val_3{2},'_cutoffneg_',cutoff_val_2{1},'p',cutoff_val_2{2},'ResultsTtest2.mat'];
+save_name_results_test_tip2 = strrep(save_name_results_test_tip2,'-','minus');
+save(save_name_results_test_tip2,'h2','p2','ci2','stats2');
+
+% Test 2: are the fluorescence distris for adhesive (above) significantly
+% different then for non-displaced (between). If so, adhsive and general
+% cell fluorescence is very similar!
+[h3,p3,ci3,stats3] = ttest2(Prt3_Fluo_above_disp_thresh,Prt3_Fluo_between_disp_thresh);
+% h=1 -> two input distributions are unequal
+save_name_results_test_tip3 = ['DataCell_FluoRenormAbove_FluoRenormAbove_FluoRenormBetween_ForTtests_cutoffpos_',cutoff_val_3{1},'p',cutoff_val_3{2},'_cutoffneg_',cutoff_val_2{1},'p',cutoff_val_2{2},'ResultsTtest3.mat'];
+save_name_results_test_tip3 = strrep(save_name_results_test_tip3,'-','minus');
+save(save_name_results_test_tip3,'h3','p3','ci3','stats3');
+
+close all
+
+save('workspace_afterstep2.mat')
+
+%% Legacy code below %%
+
+% 
+% % now we run the cutoff, and hist 2 groups: everything above
+% % displacement_thresh and everything below.
+% Above_thresh_disp = Fluofiltered_zpos_int_1D >displacement_thresh;
+% Dispfilabove_Fluofil_GFP_int_1D = Fluofiltered_Renorm_GFP_int_1D(Above_thresh_disp);
+% Dispfilbelow_Fluofil_GFP_int_1D = Fluofiltered_Renorm_GFP_int_1D(not(Above_thresh_disp));
+% 
+% % We now create 1 micron size bins for hists and hist.
+% bins_for_hist = [0:1:5];
+% Output_Zpos = discretize(Fluofiltered_zpos_int_1D_abs,bins_for_hist);
+% Mask_01 = Output_Zpos==1;
+% Mask_12 = Output_Zpos==2;
+% Mask_23 = Output_Zpos==3;
+% Mask_34 = Output_Zpos==4;
+% Mask_45 = Output_Zpos==5;
+% %this is crude, but works.
+% Fluofil_GFP_data_final_01 = Fluofiltered_Renorm_GFP_int_1D(Mask_01);
+% Fluofil_GFP_data_final_12 = Fluofiltered_Renorm_GFP_int_1D(Mask_12);
+% Fluofil_GFP_data_final_23 = Fluofiltered_Renorm_GFP_int_1D(Mask_23);
+% Fluofil_GFP_data_final_34 = Fluofiltered_Renorm_GFP_int_1D(Mask_34);
+% Fluofil_GFP_data_final_45 = Fluofiltered_Renorm_GFP_int_1D(Mask_45);
+% 
+% figure; histogram(Fluofil_GFP_data_final_01,40);xlim([0 2.5]);title('Bin:0-1')
+% figure; histogram(Fluofil_GFP_data_final_12,40);xlim([0 2.5]);title('Bin:1-2')
+% figure; histogram(Fluofil_GFP_data_final_23,40);xlim([0 2.5]);title('Bin:2-3')
+% figure; histogram(Fluofil_GFP_data_final_34,40);xlim([0 2.5]);title('Bin:3-4')
+% figure; histogram(Fluofil_GFP_data_final_45,40);xlim([0 2.5]);title('Bin:4-5')
+% 
+% bins_for_histv2 = [0 1 5];
+% Output_Zposv2 = discretize(Fluofiltered_zpos_int_1D_abs,bins_for_histv2);
+% Mask_01v2 = Output_Zposv2==1;
+% Mask_15v2 = Output_Zposv2==2;
+% Fluofil_GFP_data_final_01v2 = Fluofiltered_Renorm_GFP_int_1D(Mask_01v2);
+% Fluofil_GFP_data_final_15v2 = Fluofiltered_Renorm_GFP_int_1D(Mask_15v2);
+% figure; histogram(Fluofil_GFP_data_final_01v2,40);xlim([0 2.5]);title('Bin:0-1')
+% figure; histogram(Fluofil_GFP_data_final_15v2,40);xlim([0 2.5]);title('Bin:1-5')
+% 
+% 
+% % figure;
+% % histogram(Dispfilabove_Fluofil_GFP_int_1D,20)
+% % xlabel('Renorm Fluo intensity')
+% % ylabel('Obs N')
+% % title('Above .5 micron displacement')
+% % xlim([0 2.2])
+% % figure;
+% % histogram(Dispfilbelow_Fluofil_GFP_int_1D,20)
+% % xlabel('Renorm Fluo intensity')
+% % ylabel('Obs N')
+% % title('Below .5 icron displacement')
+% % xlim([0 2.2])
+% 
+% 
+% 
+% 
+% 
+% 
+% 
