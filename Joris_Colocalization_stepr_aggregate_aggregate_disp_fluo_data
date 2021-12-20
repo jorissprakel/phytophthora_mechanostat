@@ -1,0 +1,94 @@
+% This code is meant to run after
+% Joris_Colocalization_step4_aggregate_disp_fluo_data.m
+% We will gather the data of all the different aggregated timesteps data of a cell of
+% displacement and budle those observations (disp vs relative fluorescence)
+
+clear all
+close all
+
+% We search for the files we want in the correct format (each folder
+% contains 1 of these files)
+Tb_bundled = dir('Aggr_Data_RelFluoDisp*.mat');%Cell 6
+Rel_Fluo_aggr = [];
+Dis_aggr = [];
+
+for i = 1:length(Tb_bundled)
+    % extract
+    name_tb_loaded = Tb_bundled(i).name;
+    direc_tb_loaded = Tb_bundled(i).folder;
+    
+    load(fullfile(direc_tb_loaded,name_tb_loaded))
+    
+    File_names = strsplit(fullfile(direc_tb_loaded,name_tb_loaded),'\');%split directory at each step
+    File_name = File_names(size(File_names,2));%the last one contains the name
+    File_name_split = strsplit(cell2mat(File_name),'Disp');
+    Samplename = File_name_split{2};
+    
+    % We create some headers for later
+    if i==1
+        saving_array{1,1} = {'Samplename'};
+        saving_array{1,2} = {'Rel.Fluo.Int.'};
+        saving_array{1,3} = {'Displacement (micron)'};
+        figure; hold on
+    end
+    
+    %save the data in a cell file (tb saved for the whole timeseries of each cell)
+    saving_array{i+1,1} = Samplename;
+    saving_array{i+1,2} = data_aggr_save(:,1);
+    saving_array{i+1,3} = data_aggr_save(:,2);
+    all_plot = scatter(data_aggr_save(:,2),data_aggr_save(:,1),8,'o');
+    all_plot.MarkerEdgeAlpha = 0.6; %makes the markers transperant
+    
+    % save the data to be aggregated
+    Rel_Fluo_aggr = [Rel_Fluo_aggr; data_aggr_save(:,1)];
+    Dis_aggr = [Dis_aggr; data_aggr_save(:,2)];
+end
+
+save_name_plot = ['AllT_AllCells_Diffcolor.tif'];
+% save the individually colored datasets (check if outliers exist)
+box on
+set(gca, 'XDir', 'reverse')
+xlabel('Displacement (micron)')
+ylabel('Relative fluorescence intensity (a.u.)')
+print(gcf,'-dtiff', '-r600', save_name_plot);
+close all
+
+% Plot the aggregated data and set together
+plot_final = scatter(Dis_aggr,Rel_Fluo_aggr,8);
+plot_final.MarkerEdgeAlpha = 0.015; %makes the markers transperant
+box on
+set(gca, 'XDir', 'reverse')
+xlabel('Displacement (micron)')
+title(['AllT AllCells Fluo and Displ data'])
+save_name_plot_aggr2 = ['AllT_AllCells_Samecolor.tif'];
+print(gcf,'-dtiff', '-r600', save_name_plot_aggr2);
+close all
+
+%save the cell array containing all the data
+save_name_plot_aggr3 = ['AllT_AllCells_Data_RelFluoDisp.mat'];
+data_aggr_save = [Rel_Fluo_aggr Dis_aggr];
+save(save_name_plot_aggr3,'data_aggr_save')
+
+%make a boxplot of the data (same as the scatter, but then boxed)
+
+bins = [-5:1:2]-0.5;
+[selection_list_data] = discretize(data_aggr_save(:,2),bins);
+% selection_mask = nan(length(bins)-1,length(selection_list_data));
+% for i = 1:length(bins)-1 % we now generate the selection masks for the data from the discretize
+%     final_data_boxplot{i,:} = Fluofiltered_zpos_int_1D(selection_list_data==i);
+% end
+% final_data_boxplot{3,:}
+figure;
+boxplot(data_aggr_save(:,1),selection_list_data)
+box on
+set(gca,'XTickLabel',bins+max(bins)-1 ) % works for bins=[-5:1:2], unsure for others...
+set(gca, 'XDir', 'reverse')
+xlabel('Bincentre (+- .5 micron)')
+ylabel('Relative fluorescence intensity (a.u.)')
+title(['AllT AllCells Fluo and Displ data boxplot'])
+save_name_plot_aggr4 = ['AllT_AllCells_Boxplot.tif'];
+print(gcf,'-dtiff', '-r600', save_name_plot_aggr4);
+close all
+
+
+
