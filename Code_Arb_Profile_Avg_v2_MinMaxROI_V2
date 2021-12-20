@@ -1,0 +1,330 @@
+%% Profile Extraction and averaging from grayscale image %%
+
+clear all
+
+%% Load in %%
+
+% manually select the file containing the image (Can be automated by functionalising), assumes
+% a .mat dump of the workspace!!
+% [file_arb,path_arb] = uigetfile('*.mat', 'Select a file for analysis');
+ListFilesProfMinMax = dir('work*T*.mat');
+
+colormap_div = cbrewer('div', 'RdBu', 100,'PCHIP');
+colormap_div_flip = flipud(colormap_div);
+for o=1:size(ListFilesProfMinMax,1)
+
+    ListFilesProfMinMaxfoldername = ListFilesProfMinMax(o).folder;
+    ListFilesProfMinMaxsavename = fullfile(ListFilesProfMinMax(o).folder,ListFilesProfMinMax(o).name);
+
+    ListFilesProfMinMaxsavenamesplit = regexp(ListFilesProfMinMax(o).name,'[0-9]','match');
+    ListFilesProfMinMaxsavenamesplit = cell2mat(ListFilesProfMinMaxsavenamesplit); %extract the number of the picture
+    ListFilesProfMinMaxnewsavenametif = strcat(ListFilesProfMinMaxfoldername,'\Data_ZProfiles\Z_profile_T',num2str(ListFilesProfMinMaxsavenamesplit),'.tif');
+    ListFilesProfMinMaxnewsavenamepng = strcat(ListFilesProfMinMaxfoldername,'\Data_ZProfiles\Z_profile_T',num2str(ListFilesProfMinMaxsavenamesplit),'.png');
+    ListFilesProfMinMaxnewsavenamedata = strcat(ListFilesProfMinMaxfoldername,'\Data_ZProfiles\Z_profile_T',num2str(ListFilesProfMinMaxsavenamesplit),'.mat');
+    ListFilesProfMinMaxnewsavenamepngnormal = strcat(ListFilesProfMinMaxfoldername,'\Data_ZProfiles\Z_profile_T',num2str(ListFilesProfMinMaxsavenamesplit),'normal.png');
+    ListFilesProfMinMaxnewsavenamepngzoom = strcat(ListFilesProfMinMaxfoldername,'\Data_ZProfiles\Z_profile_T',num2str(ListFilesProfMinMaxsavenamesplit),'zoom.png');
+    ListFilesProfMinMaxnewsavenamepngprofile = strcat(ListFilesProfMinMaxfoldername,'\Data_ZProfiles\Z_profile_T',num2str(ListFilesProfMinMaxsavenamesplit),'profile.png');
+
+    % load in the file
+    % load([path_arb, file_arb]);
+    load(ListFilesProfMinMaxsavename);
+    ListFilesProfMinMax = dir('work*T*.mat');
+    
+    % For Palm images, the zpos_FPL_final height map is saved
+    % seperately
+    load(['T',num2str(ListFilesProfMinMaxsavenamesplit),'zpos_FPL_final.mat'])
+
+    % clearvars -except o ListFilesProfMinMaxnewsavename ListFilesProfMinMaxsavenamesplit ListFilesProfMinMaxsavename ListFilesProfMinMax zpos_FPL_final ListFilesProfMinMaxfoldername param
+
+    % Change to path directory
+    % cd(path_arb);
+
+    % Display file name that is loaded
+    disp(strcat(['Analysing ',ListFilesProfMinMax(o).name,' from path ',ListFilesProfMinMaxfoldername]));
+
+    % My imagemap is saved in zpos_FPL_final
+    % Change this to be your image :)
+    image_tb_analy = zpos_FPL_final;
+    % For GFP/Spiro analysis:
+    % image_tb_analy = zpos_FPL_final;
+    % IF you have forgotten to save the ROI and need to reslice:
+%     image_tb_analy = zpos_FPL_final(ROI_ymin:ROI_ymin+ROI_height,ROI_xmin:ROI_xmin+ROI_width);
+
+    % If you have forgotten to flip up down:
+%     image_tb_analy = image_tb_analy*-1;
+
+    % due to noise reasons (a few pixels extremely large value), the whole
+    % object is is possibly shifted to have an average above 0.
+    % To combat this:
+    image_tb_analy = image_tb_analy-median(median(image_tb_analy));
+
+
+    %% Select the line in the image %%
+
+    % This is the major difference with the other Arb_Profile_scripts
+    % We have automated the search for highest and lowest value in a reference
+    % window.
+
+    % Plot the image, select an area from it (ensure that cells rolling on top
+    % etc don't ruin the min max finding). Decomment this code and run it
+    % on the last timepoint to select a smaller window for min/max finding.
+%     figure;
+%     imagesc(image_tb_analy);
+%     caxis([-5 5])
+%     h = imrect;%draw a rectangle over the gauss
+%     select_ROI_position=h.getPosition;%get the position back that was selected upon closing
+%     select_ROI_position_round=round(select_ROI_position);
+%     waitfor(select_ROI_position)
+
+    % hardcoded the window to analyse from the last timepoint using the
+    % code above:
+%     select_ROI_position_round=[58,40,108,53];%ROI1good2
+%     select_ROI_position_round=[23,15,57,32];%ROI2good2
+%     select_ROI_position_round=[38,60,23,47];%ROI3good2 HAD ISSUES, vertical
+    % line makes polyfit line extension very difficult!
+    select_ROI_position_round=[25,20,55,55];%ROI4good2
+
+
+    % for P Palm data:
+%     select_ROI_position_round=[46,28,57,37];%20191119_15xdil_Slabmeas_100kPa_PPalm_2\ROI1
+%     select_ROI_position_round=[64,64,54,49];%20191120_15xdil_Slabmeas_100kPa_PPalm_3\ROI1
+%     select_ROI_position_round=[86,80,49,90];%20191120_15xdil_Slabmeas_100kPa_PPalm_3\ROI2
+%     select_ROI_position_round=[45,59,85,47];%20191120_15xdil_Slabmeas_100kPa_PPalm_3\ROI3
+    
+
+    ROI_width2 = select_ROI_position_round(3); 
+    ROI_height2 = select_ROI_position_round(4);
+    ROI_xmin2 = select_ROI_position_round(1);
+    ROI_ymin2 = select_ROI_position_round(2);
+
+    % We now have the bounding box we want to search in defined.
+    image_tb_analy_ROI = image_tb_analy(ROI_ymin2:ROI_ymin2+ROI_height2,ROI_xmin2:ROI_xmin2+ROI_width2);
+    imagesc(image_tb_analy_ROI)
+    pause(1)
+    close all
+    
+    % find the maximum from the simple image:
+    [maxRow,maxColumn] = find(ismember(image_tb_analy_ROI, max(max(image_tb_analy_ROI))));
+    MaxRowPos = maxRow + ROI_ymin2-1;
+    MaxColumnPos = maxColumn + ROI_xmin2-1;
+
+    % find the minimum from a gaussian blurred version. Code overgenomen van
+    % Hanne!
+    gauss_blur = 3;
+    filter_type = 'gaussian';
+    filter_size = [gauss_blur gauss_blur];  % Default [3 3] specifying the number of rows and columns
+    filter = fspecial(filter_type, filter_size);
+
+    % % sliding window 
+    % size_sliding_window = 3;
+    % filter = ones(size_sliding_window, size_sliding_window)/size_sliding_window^2;
+    % geblurde matrix
+    image_tb_analy_blur = imfilter(image_tb_analy_ROI, filter);
+    [MinRow,MinColumn] = find(ismember(image_tb_analy_blur, min(min(image_tb_analy_blur))));
+    MinRowPos = MinRow + ROI_ymin2-1;
+    MinColumnPos = MinColumn + ROI_xmin2-1;
+    
+%     if MinRowPos>MaxRowPos
+%         newMinRowPos = MaxRowPos;%switch values if direction is right to left
+%         newMaxRowPos = MinRowPos;
+%         MinRowPos = newMinRowPos;
+%         MaxRowPos = newMaxRowPos;
+%     end
+    
+    % we now generate the correct extended positions (in pixels)
+    % Play with the adition numbers to get a correct distance, depending upon
+    % orientation of the tube this can flip!
+    fitresults = polyfit([MaxColumnPos MinColumnPos],[MaxRowPos MinRowPos],1);
+    slope = fitresults(1);
+    intercept = fitresults (2);
+    max_addition_Columns = max([min([30/slope, 30]),-30]);%linear distance in x tb added to segment before max in pixels
+    min_addition_Columns = max([min([30/slope, 30]),-30]);%linear distance in x tb added to segment after min in pixels
+
+    if abs(slope)>=50 
+        MaxColumnPosExt = MaxColumnPos+0;
+        MaxRowPosExt = MaxRowPos+30 ;% ax+b
+        MinColumnPosExt = MinColumnPos-0;
+        MinRowPosExt = MinRowPos-30 ;% ax+b    
+    else
+        MaxColumnPosExt = MaxColumnPos-max_addition_Columns;
+        MaxRowPosExt = slope*(MaxColumnPosExt)+intercept ;% ax+b
+        MinColumnPosExt = MinColumnPos+min_addition_Columns;
+        MinRowPosExt = slope*(MinColumnPosExt)+intercept ;% ax+b
+    end
+
+    % plot the image + found values + line extension:
+    figure; hold on;
+    imagesc(image_tb_analy) 
+    set(gca,'YDir','reverse')
+    colormap(colormap_div_flip);
+    caxis([-4 4])
+    plot(MaxColumnPos,MaxRowPos,'g+','MarkerSize', 5);%first
+    plot(MinColumnPos,MinRowPos,'g+','MarkerSize', 5);%first
+    plot(MaxColumnPosExt,MaxRowPosExt,'r+','MarkerSize', 5);%first
+    plot(MinColumnPosExt,MinRowPosExt,'r+','MarkerSize', 5);%first
+    axis equal
+    axis ([0 numel(image_tb_analy(1,:)) 1 numel(image_tb_analy(:,1))])
+    xlabel('position (in pixels)')
+    ylabel('position (in pixels)')
+    colorbar
+    box off
+
+    print(gcf,'-dtiff', '-r600', [ListFilesProfMinMaxnewsavenametif]);
+    print(gcf,'-dpng', '-r600', [ListFilesProfMinMaxnewsavenamepng]);
+
+    close all
+
+    % positions_line = [2.471382488479263e+02,3.978104956268221e+02;1.998709677419355e+02,6.377376093294460e+02];%For plot profile publication 
+
+    % 
+    % positions_line = [MinRowPosExt,MaxRowPosExt;MinColumnPosExt,MaxColumnPosExt];
+    % positions_line = [MinRowPosExt,MinColumnPosExt;MaxRowPosExt,MaxColumnPosExt];
+    positions_line = [MaxColumnPosExt,MaxRowPosExt;MinColumnPosExt,MinRowPosExt];
+
+
+    %% Generate positions on the image %%
+
+    % Number of pixels perpendicular to analyse
+    %n_pixels_side = input('How many pixels should be take to average? (total = 2xlarger) Press enter to confirm.');
+    % Hard code this if that is neccesary
+    n_pixels_side = 10;
+
+    % some checks
+    if isstring(n_pixels_side) == true
+        disp('No number was provided')
+        n_pixels_side = 3; %Use this
+    end
+
+    % Generate positions
+    % taken from: https://math.stackexchange.com/questions/2767319/calculate-coordinates-of-a-point-at-90-degrees-from-a-line
+    v_y = positions_line(2,2)-positions_line(1,2);%difference in y positions
+    v_x = positions_line(2,1)-positions_line(1,1);%difference in x positions
+    diff_triangle = sqrt(v_x^2+v_y^2);
+
+    newpos_x_up = (-1*v_y/diff_triangle)+positions_line(1,1); % in the arbitraty up direction
+    newpos_y_up = (v_x/diff_triangle)+positions_line(1,2); % in the arbitrary up direction
+
+    shift_amount_up_x = (-1*v_y/diff_triangle); %distance in x to be translated over in pixels
+    shift_amount_up_y = (v_x/diff_triangle); %distance in y to be translated over in pixels
+
+    % Loop over n_pix
+
+    % Column order: x1, y1, x2, y2
+    data_pixels = nan(2*n_pixels_side+1,4);
+    % insert original data in the centre
+    data_pixels(n_pixels_side+1,1:2) = positions_line(1,:);
+    data_pixels(n_pixels_side+1,3:4) = positions_line(2,:);
+
+    % Generate the data to fill until:
+    matrix_top = repmat(fliplr(1:n_pixels_side)',1,4);
+    % for the first and third column (x), multiply with shift amount up x
+    x_shift = fliplr(1:n_pixels_side)'*shift_amount_up_x;
+    matrix_top(:,1) = x_shift+positions_line(1,1);
+    matrix_top(:,3) = x_shift+positions_line(2,1);
+    % for the second and last column (y), multiply with shift amount up y
+    y_shift = fliplr(1:n_pixels_side)'*shift_amount_up_y;
+    matrix_top(:,2) = y_shift+positions_line(1,2);
+    matrix_top(:,4) = y_shift+positions_line(2,2);
+    % Append to the top of the data_pixels matrix with these positions
+    data_pixels(1:n_pixels_side,:) = matrix_top;
+
+    % now the underfill starts, in thesame manner (but every shift gets* -1 and is in reversed order)
+    % Generate the data to fill below:
+    matrix_bottom = repmat([1:n_pixels_side]',1,4);
+    % for the first and third column (x), multiply with shift amound down x
+    x_shift_down = [1:n_pixels_side]'*-1*shift_amount_up_x;
+    matrix_bottom(:,1) = x_shift_down+positions_line(1,1);
+    matrix_bottom(:,3) = x_shift_down+positions_line(2,1);
+    % for the third and last column (y), multiply with shift amound down y
+    y_shift_down = [1:n_pixels_side]'*-1*shift_amount_up_y;
+    matrix_bottom(:,2) = y_shift_down+positions_line(1,2);
+    matrix_bottom(:,4) = y_shift_down+positions_line(2,2);
+    % Append the bottom of the data_pixels matrix with these positions
+    data_pixels(n_pixels_side+2:end,:) = matrix_bottom;
+
+    % Point generation should now be done :)
+
+    %% Make the plot with the points to check! %%
+
+    figure; hold on;
+    imagesc([1:size(image_tb_analy,2)],[-1.*[1:size(image_tb_analy,1)]],(image_tb_analy))
+    colormap(colormap_div_flip);
+    caxis([-4 4])
+    % Plot original points
+    plot(positions_line(1,1),-positions_line(1,2),'b+','MarkerSize', 10);%first
+    plot(positions_line(2,1),-positions_line(2,2),'b+','MarkerSize', 10);%second
+    %plot first set of data
+    for i=1:size(data_pixels,1)
+        if i ~= ceil(size(data_pixels,1)/2)
+            plot(data_pixels(i,1),-data_pixels(i,2),'r+', 'MarkerSize', 10);
+            plot(data_pixels(i,3),-data_pixels(i,4),'r+', 'MarkerSize', 10);
+        end
+        line([data_pixels(i,1),data_pixels(i,3)],[-data_pixels(i,2),-data_pixels(i,4)])
+    end
+    axis equal
+    axis ([1 numel(image_tb_analy(1,:)) -1*numel(image_tb_analy(:,1))+1 -1 ])
+    xlabel('position (in pixels)')
+    ylabel('position (in pixels)')
+    title('Overview Image Profile')
+    box off
+    
+    % Find the amount of previous entries in the current folder:
+    % n_plots_before = size(dir('Arb_Prof_*'),1)/3; %devide to ensure next entry label is 2
+    print(gcf,'-dpng', '-r600', ListFilesProfMinMaxnewsavenamepngnormal);
+
+    % Zoom into the correct image
+    xmin = min(min(data_pixels(:,1)),min(data_pixels(:,3)))-5;
+    ymin = -1*(min(min(data_pixels(:,2)),min(data_pixels(:,4)))-5);
+    xmax = max(max(data_pixels(:,1)),max(data_pixels(:,3)))+5;
+    ymax = -1*(max(max(data_pixels(:,2)),max(data_pixels(:,4)))+5);
+    axis([xmin xmax ymax ymin])
+    title('Zoomed Image Profile')
+
+    % Save the zoomed in image
+    print(gcf,'-dpng', '-r600', ListFilesProfMinMaxnewsavenamepngzoom);
+    close()
+
+    %% Extract the image profiles %%
+
+    data_pixels_profiles = [];
+    
+    for j=1:size(data_pixels,1)
+        if j ==1
+            data_pixels_profiles(j,:) = improfile(image_tb_analy,[data_pixels(j,1),data_pixels(j,3)],[data_pixels(j,2) data_pixels(j,4)]);
+        else
+            data_pixels_profiles(j,:) = improfile(image_tb_analy,[data_pixels(j,1),data_pixels(j,3)],[data_pixels(j,2) data_pixels(j,4)],no_pix);
+        end
+        no_pix = size(data_pixels_profiles(1,:),2); %Number of pixels per line
+    end
+
+    % Since the start and end points seem to have inverted from what I want:
+    data_pixels_profiles = fliplr(data_pixels_profiles);
+
+
+    % Mean this data
+    data_pixels_profiles_mean = nanmean(data_pixels_profiles);
+    data_pixels_profiles_mean_nanometer = 1000*data_pixels_profiles_mean;
+
+    % Plot the data
+    figure;
+    scatter([1:size(data_pixels_profiles_mean,2)],data_pixels_profiles_mean_nanometer,30,'x')
+    xlabel('Distance along line (in pixels)')
+    ylabel('Displacement distance (nanometers)') %microns is my lengthscale, depends upon sample!
+    % ylabel('Displacement profile (a.u.)')
+    title('Displacement Profile')
+    box on
+    ylim([-5000 5000])
+    % Find the amount of previous entries in the current folder:
+    print(gcf,'-dpng', '-r600', ListFilesProfMinMaxnewsavenamepngprofile);
+    close()
+    
+    close all
+
+    save(strcat(ListFilesProfMinMaxfoldername,'\Data_ZProfiles\Z_Profile_Arb_profile_data_T',num2str(ListFilesProfMinMaxsavenamesplit),'.mat'),'data_pixels_profiles_mean','data_pixels_profiles','positions_line','data_pixels','image_tb_analy','data_pixels_profiles_mean_nanometer')
+
+    save(ListFilesProfMinMaxnewsavenamedata)
+    ListFilesProfMinMax = dir('*T*.mat');
+    
+    clearvars -except o ListFilesProfMinMaxnewsavename ListFilesProfMinMaxsavenamesplit ListFilesProfMinMaxsavename ListFilesProfMinMax zpos_FPL_final ListFilesProfMinMaxfoldername colormap_div colormap_div_flip
+    ListFilesProfMinMax = dir('*T*.mat');
+end
