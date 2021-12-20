@@ -1,0 +1,218 @@
+% Script Plot scatter Displacement vs LifeAct fluorescence intensity
+
+% Source fluorescence data
+data_source_GFP = 'G:\Thomas van Boxmeer MSc Thesis Data\RawData\Correct_script_Layout\200128\Roi1_inv_with_overnight';
+
+% Source displacement data
+data_source_zpos = 'G:\Thomas van Boxmeer MSc Thesis Data\RawData\Correct_script_Layout\200128\zpos_maps\Roi1_inv_with_overnight';
+
+%timestep to be analysed
+timestep = 35;
+GFPdata_name = ['Arb_profile_data_',num2str(timestep),'.mat'];
+zposdata_name = ['T',num2str(timestep),'zpos_FPL_final.mat'];
+
+%load in the data
+GFPdata = load([data_source_GFP,'\',GFPdata_name]);%this is the raw intensity map
+zposdata = load([data_source_zpos,'\',zposdata_name]);%this is the raw displacement map
+% In both structs, the data_pixels_profiles is the raw data.
+% Both maps should have exactly thesame size, that is what this code will
+% assume!
+
+%to check if both maps have thesame orientation:
+% imagesc(GFPdata.data_pixels_profiles);
+% imagesc(zposdata.zpos_FPL_final);
+
+raw_GFP_int_1D = GFPdata.data_pixels_profiles(:);
+raw_zpos_int_1D = zposdata.zpos_FPL_final(:);
+f1 = scatter(raw_zpos_int_1D,raw_GFP_int_1D,'filled');
+f1.MarkerFaceAlpha = 0.2;
+f1.Parent.XDir = 'reverse';
+box on
+title('Intensity vs depth plot, colocalisation')
+ylabel('fluorescent intensity(a.u.)')
+xlabel('displacement (microns)')
+print(gcf,'-dtiff', '-r600', ['D:\Documents\Joris_Colocalization_trial1_timestep_25_200122_ROI1_infestansv2\IntvsDepth.tif']);
+
+figure
+raw_GFP_int_1D = GFPdata.data_pixels_profiles(:);
+raw_zpos_int_1D = zposdata.data_pixels_profiles(:);
+raw_zpos_int_1D_abs = abs(raw_zpos_int_1D);
+f1 = scatter(raw_zpos_int_1D_abs,raw_GFP_int_1D,'filled');
+f1.MarkerFaceAlpha = 0.2;
+% f1.Parent.XDir = 'reverse';
+box on
+title('Intensity vs depth plot, colocalisation absolute')
+ylabel('fluorescent intensity(a.u.)')
+xlabel('displacement (microns)')
+print(gcf,'-dtiff', '-r600', ['D:\Documents\Joris_Colocalization_trial1_timestep_25_200122_ROI1_infestansv2\IntvsDepthAbs.tif']);
+
+
+
+% now lets see where all the points are that are not around 0,0
+x_limits = [-0.5 , 0.5];%under, over displacement
+ylimits = [750];%over GFP intensity
+
+
+% find points that are at the large displacements:
+indx_x = or(raw_zpos_int_1D<x_limits(1),raw_zpos_int_1D>x_limits(2));
+
+map_large_disp = reshape(indx_x,[],size(zposdata.data_pixels_profiles,2));
+figure
+imagesc(map_large_disp)
+title('Points at large displacement')
+axis equal
+axis tight
+
+% find points that are at the about 0 displacements
+indx_x2 = and(raw_zpos_int_1D>x_limits(1),raw_zpos_int_1D<x_limits(2));%small displacement
+indx_y = raw_GFP_int_1D>ylimits;%larger fluorescence values, not background
+indx_x2ycombi = and(indx_x2,indx_y);
+map_small_disp_high_fluorescence = reshape(indx_x2ycombi,[],size(zposdata.data_pixels_profiles,2));
+figure
+imagesc(map_small_disp_high_fluorescence)
+title('Points at small disp high fluorescence')
+axis equal
+axis tight
+
+%make a combined map
+map_combi_disps = map_large_disp + 2*map_small_disp_high_fluorescence;
+figure
+imagesc(map_combi_disps)
+title('combi of both maps, yellow high fluo low disp teal high disp')
+axis equal
+axis tight
+
+
+% for the absolute data, use the xlim and intensity lim earlier defined.
+x_limits_abs = max(abs(x_limits));
+ylimits_abs = [500];%this is the treshold to descern adhesive and indentive sites
+
+%Generate the colormaps in RGB:
+cmap_yellow = [1 1 1; 0.863281 0.796875 0.464844];
+cmap_purple = [1 1 1; 0.535156 0.132813 0.332031];
+cmap_blue = [1 1 1; 0.199219 0.132813 0.53125];
+cmap_orange = [1 1 1; 0.265625 0.664063 0.597656];
+
+%low fluo, low disp (background)
+lowfl_lowdisp_indx_x = raw_zpos_int_1D_abs<x_limits_abs;%small displacement
+lowfl_lowdisp_indx_y = raw_GFP_int_1D<ylimits_abs;%low fluorescence
+lowfl_lowdisp_xycombi = and(lowfl_lowdisp_indx_x,lowfl_lowdisp_indx_y);
+data_lowfl_lowdisp_zpos = raw_zpos_int_1D_abs(lowfl_lowdisp_xycombi);
+data_lowfl_lowdisp_GFP = raw_GFP_int_1D(lowfl_lowdisp_xycombi);
+xlswrite('D:\Documents\Joris_Colocalization_trial1_timestep_25_200122_ROI1_infestansv2\data_lowfl_lowdisp.xlsx',[data_lowfl_lowdisp_zpos data_lowfl_lowdisp_GFP])
+map_small_disp_lowfl_lowdisp = reshape(lowfl_lowdisp_xycombi,[],size(zposdata.data_pixels_profiles,2));
+figure
+imagesc(map_small_disp_lowfl_lowdisp)
+title('Points low gfp low disp')
+axis equal
+axis tight
+colormap(cmap_blue)
+axis off
+box on
+axis on
+set(gca,'xtick',[])
+set(gca,'xticklabel',[])
+set(gca,'ytick',[])
+set(gca,'yticklabel',[])
+print(gcf,'-dtiff', '-r600', ['D:\Documents\Joris_Colocalization_trial1_timestep_25_200122_ROI1_infestansv2\lowfl_lowdisp.tif']);
+
+
+%high fluo, low disp (cyst, not invasion site)
+highfl_lowdisp_indx_x = raw_zpos_int_1D_abs<x_limits_abs;%small displacement
+highfl_lowdisp_indx_y = raw_GFP_int_1D>ylimits_abs;%high fluorescence
+highfl_lowdisp_xycombi = and(highfl_lowdisp_indx_x,highfl_lowdisp_indx_y);
+data_highfl_lowdisp_zpos = raw_zpos_int_1D_abs(highfl_lowdisp_xycombi);
+data_highfl_lowdisp_GFP = raw_GFP_int_1D(highfl_lowdisp_xycombi);
+xlswrite('D:\Documents\Joris_Colocalization_trial1_timestep_25_200122_ROI1_infestansv2\data_highfl_lowdisp.xlsx',[data_highfl_lowdisp_zpos data_highfl_lowdisp_GFP])
+map_small_disp_highfl_lowdisp = reshape(highfl_lowdisp_xycombi,[],size(zposdata.data_pixels_profiles,2));
+figure
+imagesc(map_small_disp_highfl_lowdisp)
+title('Points high gfp low disp')
+axis equal
+axis tight
+colormap(cmap_orange)
+axis off
+box on
+axis on
+set(gca,'xtick',[])
+set(gca,'xticklabel',[])
+set(gca,'ytick',[])
+set(gca,'yticklabel',[])
+print(gcf,'-dtiff', '-r600', ['D:\Documents\Joris_Colocalization_trial1_timestep_25_200122_ROI1_infestansv2\highfl_lowdisp.tif']);
+
+%low fluo, high disp (germ tube, adhesive)
+lowfl_highdisp_indx_x = raw_zpos_int_1D_abs>x_limits_abs;%high displacement
+lowfl_highdisp_indx_y = raw_GFP_int_1D<ylimits_abs;%low fluorescence
+lowfl_highdisp_xycombi = and(lowfl_highdisp_indx_x,lowfl_highdisp_indx_y);
+data_lowfl_highdisp_zpos = raw_zpos_int_1D_abs(lowfl_highdisp_xycombi);
+data_lowfl_highdisp_GFP = raw_GFP_int_1D(lowfl_highdisp_xycombi);
+xlswrite('D:\Documents\Joris_Colocalization_trial1_timestep_25_200122_ROI1_infestansv2\data_lowfl_highdisp.xlsx',[data_lowfl_highdisp_zpos data_lowfl_highdisp_GFP])
+map_small_disp_lowfl_highdisp = reshape(lowfl_highdisp_xycombi,[],size(zposdata.data_pixels_profiles,2));
+figure
+imagesc(map_small_disp_lowfl_highdisp)
+title('Points low gfp high disp')
+axis equal
+axis tight
+colormap(cmap_yellow)
+axis off
+box on
+axis on
+set(gca,'xtick',[])
+set(gca,'xticklabel',[])
+set(gca,'ytick',[])
+set(gca,'yticklabel',[])
+print(gcf,'-dtiff', '-r600', ['D:\Documents\Joris_Colocalization_trial1_timestep_25_200122_ROI1_infestansv2\lowfl_highdisp.tif']);
+
+
+%high fluo, high disp (germ tube, indentive)
+highfl_highdisp_indx_x = raw_zpos_int_1D_abs>x_limits_abs;%high displacement
+highfl_highdisp_indx_y = raw_GFP_int_1D>ylimits_abs;%high fluorescence
+highfl_highdisp_xycombi = and(highfl_highdisp_indx_x,highfl_highdisp_indx_y);
+data_highfl_highdisp_zpos = raw_zpos_int_1D_abs(highfl_highdisp_xycombi);
+data_highfl_highdisp_GFP = raw_GFP_int_1D(highfl_highdisp_xycombi);
+xlswrite('D:\Documents\Joris_Colocalization_trial1_timestep_25_200122_ROI1_infestansv2\data_highfl_highdisp.xlsx',[data_highfl_highdisp_zpos data_highfl_highdisp_GFP])
+map_small_disp_highfl_highdisp = reshape(highfl_highdisp_xycombi,[],size(zposdata.data_pixels_profiles,2));
+figure
+imagesc(map_small_disp_highfl_highdisp)
+title('Points high gfp high disp')
+axis equal
+axis tight
+colormap(cmap_purple)
+axis off
+box on
+axis on
+set(gca,'xtick',[])
+set(gca,'xticklabel',[])
+set(gca,'ytick',[])
+set(gca,'yticklabel',[])
+print(gcf,'-dtiff', '-r600', ['D:\Documents\Joris_Colocalization_trial1_timestep_25_200122_ROI1_infestansv2\highfl_highdisp.tif']);
+
+%replot the original displacement map
+figure
+imagesc(zposdata.data_pixels_profiles)
+caxis([-3 3])
+colormap_div = cbrewer('div', 'RdBu', 100,'PCHIP');
+colormap(flipud(colormap_div))
+title('Displacement map')
+axis equal
+axis tight
+axis off
+colorbar
+print(gcf,'-dtiff', '-r600', ['D:\Documents\Joris_Colocalization_trial1_timestep_25_200122_ROI1_infestansv2\Dispmap.tif']);
+title('')
+print(gcf,'-dtiff', '-r600', ['D:\Documents\Joris_Colocalization_trial1_timestep_25_200122_ROI1_infestansv2\Dispmap_totitle.tif']);
+
+%plot the original intensity map (grayscale)
+figure
+imagesc(GFPdata.data_pixels_profiles)
+title('GFP map')
+colormap gray
+axis equal
+axis tight
+axis off
+print(gcf,'-dtiff', '-r600', ['D:\Documents\Joris_Colocalization_trial1_timestep_25_200122_ROI1_infestansv2\GFPmap.tif']);
+title('')
+print(gcf,'-dtiff', '-r600', ['D:\Documents\Joris_Colocalization_trial1_timestep_25_200122_ROI1_infestansv2\GFPmap_notitle.tif']);
+
+
+save('D:\Documents\Joris_Colocalization_trial1_timestep_25_200122_ROI1_infestansv2\workspace.mat')
