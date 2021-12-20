@@ -1,0 +1,391 @@
+%% Profile Extraction and averaging from grayscale image %%
+
+clear all
+
+%% Load in %%
+
+% manually select the file containing the image (Can be automated by functionalising), assumes
+% a .mat dump of the workspace!!
+% [file_arb,path_arb] = uigetfile('*.mat', 'Select a file for analysis');
+[file_arb,path_arb] = uigetfile('*.tif', 'Select a file for analysis');
+
+
+% correct the units, from pixels to microns!!!!
+xy_step = 0.413; %in microns/pix
+z_step = 0.50; %in microns/pix
+
+
+% load in the file
+% load([path_arb, file_arb]);
+
+% Change to path directory
+cd(path_arb);
+
+% Display file name that is loaded
+disp(strcat(['Analysing ',file_arb,' from path ',path_arb]));
+
+% My imagemap is saved in zpos_FPL_final
+% Change this to be your image :)
+% image_tb_analy = zpos_FPL_final_ROI;
+
+% If the data is a .tiff z-stack
+img_tb_analy_info = imfinfo(file_arb);
+img_tb_anly_stack_size = numel(img_tb_analy_info(:,1));
+for i=1:img_tb_anly_stack_size
+    img_tb_analy_zstack(:,:,i) = imread(file_arb,i);
+end
+image_tb_analy = mean(double(img_tb_analy_zstack),3);
+% image_tb_analy = imread([path_arb, file_arb]);
+% For GFP/Spiro analysis:
+% image_tb_analy = Topview;
+
+% Convert to grayscale if needed here!
+
+
+%% Select the line in the image %%
+
+% Plot the image, select an area from it
+figure; %activate me
+imagesc(image_tb_analy);
+title('Leftclick to generate line. Backspace to remove points. Close by pressing enter or right-click.')
+positions_line=getline(gcf);
+close(gcf);
+
+% Consistency check, select only first 2 positions (line of profile)
+% positions_line = positions_line(1:2,1:2); 
+% activate me
+% positions_line = [3.278732718894009e+02,3.684533527696793e+02;2.228778801843318e+02,2.848615160349855e+02];
+
+%% Generate positions on the image %%
+
+% Number of pixels perpendicular to analyse
+% n_pixels_side = input('How many pixels should be take to average? (total
+% = 2xlarger) Press enter to confirm.'); %activate me
+% Hard code this if that is neccesary
+n_pixels_side = 30; %deactivate me
+
+% some checks
+if isstring(n_pixels_side) == true
+    disp('No number was provided')
+    n_pixels_side = 3; %Use this
+end
+
+% Generate positions
+% taken from: https://math.stackexchange.com/questions/2767319/calculate-coordinates-of-a-point-at-90-degrees-from-a-line
+v_y = positions_line(2,2)-positions_line(1,2);%difference in y positions
+v_x = positions_line(2,1)-positions_line(1,1);%difference in x positions
+diff_triangle = sqrt(v_x^2+v_y^2);
+
+newpos_x_up = (-1*v_y/diff_triangle)+positions_line(1,1); % in the arbitraty up direction
+newpos_y_up = (v_x/diff_triangle)+positions_line(1,2); % in the arbitrary up direction
+
+shift_amount_up_x = (-1*v_y/diff_triangle); %distance in x to be translated over in pixels
+shift_amount_up_y = (v_x/diff_triangle); %distance in y to be translated over in pixels
+
+% Loop over n_pix
+
+% Column order: x1, y1, x2, y2
+data_pixels = nan(2*n_pixels_side+1,4);
+% insert original data in the centre
+data_pixels(n_pixels_side+1,1:2) = positions_line(1,:);
+data_pixels(n_pixels_side+1,3:4) = positions_line(2,:);
+
+% Generate the data to fill until:
+matrix_top = repmat(fliplr(1:n_pixels_side)',1,4);
+% for the first and third column (x), multiply with shift amount up x
+x_shift = fliplr(1:n_pixels_side)'*shift_amount_up_x;
+matrix_top(:,1) = x_shift+positions_line(1,1);
+matrix_top(:,3) = x_shift+positions_line(2,1);
+% for the second and last column (y), multiply with shift amount up y
+y_shift = fliplr(1:n_pixels_side)'*shift_amount_up_y;
+matrix_top(:,2) = y_shift+positions_line(1,2);
+matrix_top(:,4) = y_shift+positions_line(2,2);
+% Append to the top of the data_pixels matrix with these positions
+data_pixels(1:n_pixels_side,:) = matrix_top;
+
+% now the underfill starts, in thesame manner (but every shift gets* -1 and is in reversed order)
+% Generate the data to fill below:
+matrix_bottom = repmat([1:n_pixels_side]',1,4);
+% for the first and third column (x), multiply with shift amound down x
+x_shift_down = [1:n_pixels_side]'*-1*shift_amount_up_x;
+matrix_bottom(:,1) = x_shift_down+positions_line(1,1);
+matrix_bottom(:,3) = x_shift_down+positions_line(2,1);
+% for the third and last column (y), multiply with shift amound down y
+y_shift_down = [1:n_pixels_side]'*-1*shift_amount_up_y;
+matrix_bottom(:,2) = y_shift_down+positions_line(1,2);
+matrix_bottom(:,4) = y_shift_down+positions_line(2,2);
+% Append the bottom of the data_pixels matrix with these positions
+data_pixels(n_pixels_side+2:end,:) = matrix_bottom;
+
+% Point generation should now be done :)
+
+%% Create a dir with the name of the file, and move to it %%
+
+name_dir = strsplit(file_arb,'.');
+name_dir = name_dir{1};
+mkdir(name_dir)
+Oldfolder = cd(name_dir);
+
+%% Make the plot with the points to check! %%
+% This is the XY view, from the top!
+
+figure; hold on;
+imagesc([1:size(image_tb_analy,2)],[-1.*[1:size(image_tb_analy,1)]],(image_tb_analy))
+colormap gray
+% Plot original points
+plot(positions_line(1,1),-positions_line(1,2),'b+','MarkerSize', 10);%first
+plot(positions_line(2,1),-positions_line(2,2),'b+','MarkerSize', 10);%second
+%plot first set of data
+for i=1:size(data_pixels,1)
+    if i ~= ceil(size(data_pixels,1)/2)
+        plot(data_pixels(i,1),-data_pixels(i,2),'r+', 'MarkerSize', 10);
+        plot(data_pixels(i,3),-data_pixels(i,4),'r+', 'MarkerSize', 10);
+    end
+    line([data_pixels(i,1),data_pixels(i,3)],[-data_pixels(i,2),-data_pixels(i,4)])
+end
+
+% Find the amount of previous entries in the current folder:
+n_plots_before = size(dir('Arb_Prof_*'),1)/3; %devide to ensure next entry label is 2
+print(gcf,'-dpng', '-r600', [strcat('Arb_Prof_',num2str(n_plots_before+1) ,'.png')]);
+
+% Zoom into the correct image
+xmin = min(min(data_pixels(:,1)),min(data_pixels(:,3)))-5;
+ymin = -1*(min(min(data_pixels(:,2)),min(data_pixels(:,4)))-5);
+xmax = max(max(data_pixels(:,1)),max(data_pixels(:,3)))+5;
+ymax = -1*(max(max(data_pixels(:,2)),max(data_pixels(:,4)))+5);
+axis([xmin xmax ymax ymin])
+
+% Find the amount of previous entries in the current folder:
+print(gcf,'-dpng', '-r600', [strcat('Arb_Prof_Zoom',num2str(n_plots_before+1) ,'.png')]);
+close()
+
+%% Extract the image profiles %%
+
+% for the whole z-stack, not meaned!
+data_pixels_profiles_zstack = [];
+for i=1:img_tb_anly_stack_size
+    for j=1:size(data_pixels,1)
+        data_pixels_profiles(j,:) = improfile(img_tb_analy_zstack(:,:,i),[data_pixels(j,1),data_pixels(j,3)],[data_pixels(j,2) data_pixels(j,4)]);
+    end
+    data_pixels_profiles_zstack(:,:,i) = data_pixels_profiles;
+    
+    % Decomment the lines below to see the attained profiles
+%     figure;imagesc(data_pixels_profiles_zstack(:,:,i));
+%     pause(0.3)
+%     close all
+end
+
+%for the averaged image of the z-stack (image_tb_analy)
+data_pixels_profiles = [];
+for j=1:size(data_pixels,1)
+    data_pixels_profiles(j,:) = improfile(image_tb_analy,[data_pixels(j,1),data_pixels(j,3)],[data_pixels(j,2) data_pixels(j,4)]);
+end
+
+
+% Mean this data
+data_pixels_profiles_mean = nanmean(data_pixels_profiles);
+data_pixels_profiles_mean_nanometer = 1000*data_pixels_profiles_mean;
+
+% Plot the data
+figure;
+scatter([1:size(data_pixels_profiles_mean,2)],data_pixels_profiles_mean_nanometer,30,'x')
+xlabel('Distance along line (in pixels)')
+ylabel('Fluorescent intensity (a.u.)') %microns is my lengthscale, depends upon sample!
+% ylabel('Displacement profile (a.u.)')
+title('eGFP intensity profile')
+box on
+% Find the amount of previous entries in the current folder:
+print(gcf,'-dpng', '-r600',[strcat('Arb_Prof_Plot',num2str(n_plots_before+1) ,'.png')]);
+close()
+
+save(strcat('Arb_profile_data_',num2str(n_plots_before+1),'.mat'),'data_pixels_profiles_mean','data_pixels_profiles','positions_line','data_pixels','image_tb_analy','data_pixels_profiles_mean_nanometer', 'img_tb_analy_zstack','n_pixels_side')
+
+%% reslice the data for XZ plane analysis %%
+
+%rotate the 3D matrix to get out the image plane.
+data_pixels_profiles_zstack_rotated = permute(data_pixels_profiles_zstack,[2,3,1]);
+data_pixels_profiles_zstack_rotated_mean = mean(data_pixels_profiles_zstack_rotated,3);
+data_pixels_profiles_zstack_rotated_max = max(data_pixels_profiles_zstack_rotated,[],3);
+
+%to check how the full stack XZ projection looks like looks like:
+imagesc(rot90(data_pixels_profiles_zstack_rotated_max))
+print(gcf,'-dpng', '-r600',['XZ_image_wholestack_mean',name_dir ,'.png']);
+close all
+
+
+for k=1:size(data_pixels_profiles_zstack_rotated,3)
+    imagesc(flipud(data_pixels_profiles_zstack_rotated(:,:,k)'));
+    axis tight
+    set(gca,'XTick',[])
+    set(gca,'YTick',[])
+    caxis([0.1*(max(max(max(data_pixels_profiles_zstack_rotated)))) max(max(max(data_pixels_profiles_zstack_rotated)))])
+    title(['k = ',num2str(k)])
+    pause(0.5)
+    close all
+end
+selected_slice = input('Type here the number of the slice you wish to run the cirvature analysis:');
+
+%we do a local averaging, +- averaging_thickness
+averaging_thickness = 3;
+slice_analysis_curvature_all = data_pixels_profiles_zstack_rotated(:,:,(selected_slice-averaging_thickness):(selected_slice+averaging_thickness));
+slice_analysis_curvature_mean = flipud(permute(mean(slice_analysis_curvature_all,3),[2 1]));
+
+%to check how the slice looks like:
+imagesc(slice_analysis_curvature_mean)
+print(gcf,'-dpng', '-r600',['XZ_image_',name_dir ,'.png']);
+close all
+
+%% Binarize sideview happens here, iterate on threshold_perc! %%
+
+threshold_perc = 10; %fill in here the threshold percentage of the maximum intensity!
+threshold = threshold_perc./100*(max(max(max(data_pixels_profiles_zstack_rotated))));
+
+% create a blackbwhite map of the image (above and below threshold
+slice_analysis_mean_BW = imbinarize(slice_analysis_curvature_mean,threshold);
+try1 = bwmorph(slice_analysis_mean_BW,'remove');
+imagesc(slice_analysis_mean_BW+try1)
+title('Please draw a box to define searched slices. Close window to continue');
+xlabel('Cell x position (pixel units)');
+ylabel('Cell z position (pixel units)');
+h = imrect;%draw a rectangle over the cell tip
+select_ROI_position=h.getPosition;%get the position back that was selected upon closing
+select_ROI_position_round=round(select_ROI_position);
+waitfor(select_ROI_position)
+
+% Punch out this data from the sideview to be analysed
+ROI_width = select_ROI_position_round(3); 
+ROI_height = select_ROI_position_round(4);
+ROI_xmin = select_ROI_position_round(1);
+ROI_ymin = select_ROI_position_round(2);
+
+% make an image of the area
+tip_area = slice_analysis_curvature_mean;
+tip_area(ROI_ymin:ROI_ymin+ROI_height,ROI_xmin:ROI_xmin+ROI_width) = 0;
+figure; imagesc(tip_area);
+print(gcf,'-dtiff', '-r600', ['Tiparea_of_XZ_cutoff_',num2str(threshold_perc),'.tif']);
+close
+
+tip_site = try1(ROI_ymin:ROI_ymin+ROI_height,ROI_xmin:ROI_xmin+ROI_width);
+
+
+%% from the tip_site window, get the pixels ==1 and bring them to the correct units %%
+
+[y_pix_list, x_pix_list] = find(tip_site==1);
+
+x_pix_list_micron = x_pix_list*xy_step;
+y_pix_list_micron = y_pix_list*z_step;
+
+%do the filtering step
+x_micron_list_SG_filt = sgolayfilt(x_pix_list_micron,2,15);
+y_micron_list_SG_filt = sgolayfilt(y_pix_list_micron,2,15);
+%make a plot to check the filtering vs the observed points.
+%Change the filter parameters if needed!
+plot(x_pix_list_micron,y_pix_list_micron,'.')
+hold on
+plot(x_micron_list_SG_filt,y_micron_list_SG_filt)
+set(gca,'YDir','reverse')
+xlabel('position in xy plane (microns)')
+ylabel('position in z plane (microns)')
+close all
+
+%% The found filtered curve will be fitted to get the circumference %%
+
+% Loop over the list of filtered coordinates; make triplets in the
+% following style [x1 y1;x2 y2;x3 y3]
+
+saving_radii = [];
+for l=2:(numel(x_micron_list_SG_filt)-2)
+    coordinate_set_l_minus1 = [x_micron_list_SG_filt(l-1) y_micron_list_SG_filt(l-1)];
+    coordinate_set_l = [x_micron_list_SG_filt(l) y_micron_list_SG_filt(l)];
+    coordinate_set_l_plus1 = [x_micron_list_SG_filt(l+1) y_micron_list_SG_filt(l+1)];
+    coordinate_set_complete = [coordinate_set_l_minus1;coordinate_set_l;coordinate_set_l_plus1];%combine 3 points to input for fit circle function
+    
+    [R] = fit_circle_through_3_points(coordinate_set_complete);
+    %taken from: https://nl.mathworks.com/matlabcentral/fileexchange/57668-fit-circle-through-3-points
+
+    saving_radii(l-1) = R;%save the found radius
+end
+
+saving_curvature = saving_radii.^-1; % in micron units!!!
+saving_curvature_max = max(saving_curvature);
+cmap = colormap('cool');
+
+% get the RGB values for each point, plot curvature on the original shape
+% to check. from: https://nl.mathworks.com/matlabcentral/answers/312777-how-can-i-retrieve-rgb-array-from-a-colormap-given-a-cdata
+cmin = min(saving_curvature(:));
+cmax = max(saving_curvature(:));
+m = length(saving_curvature);
+index = fix((saving_curvature-cmin)/(cmax-cmin)*m)+1; %A
+RGB = ind2rgb(index,cmap);
+RGB = reshape(RGB, [],3);
+
+% Create a plot with the curvature points
+plot(x_pix_list_micron,y_pix_list_micron,'.')
+hold on
+plot(x_micron_list_SG_filt,y_micron_list_SG_filt)
+set(gca,'YDir','reverse')
+xlabel('position in xy plane (microns)')
+ylabel('position in z plane (microns)')
+for l=2:(numel(x_micron_list_SG_filt)-2)
+    coordinate_set_l = [x_micron_list_SG_filt(l) y_micron_list_SG_filt(l)];
+    curve_thisl = saving_curvature(l-1)/saving_curvature_max;
+    plot(coordinate_set_l(1), coordinate_set_l(2),'.','Color',RGB(l-1,:),'MarkerSize',30)
+end
+
+% Save an image of the zoom in XZ projection with the curvature
+print(gcf,'-dtiff', '-r600', ['XZ_Tipzoom_curvature_image_cutoff_',num2str(threshold_perc),'.tif']);
+
+% Make an image on the intensity map of the slice of the curvature
+imagesc(slice_analysis_curvature_mean)
+hold on
+for l=2:(numel(x_micron_list_SG_filt)-2)
+    %transform coordinates back to the pixel scale (as is the imagesc
+    %command in the line above)
+    coordinate_set_1_plot_notzoom = [x_micron_list_SG_filt(l)/xy_step y_micron_list_SG_filt(l)/z_step];
+    coordinate_set_1_plot_notzoom_mapOnLargeImage(1) = coordinate_set_1_plot_notzoom(1)+ROI_xmin;
+    coordinate_set_1_plot_notzoom_mapOnLargeImage(2) = coordinate_set_1_plot_notzoom(2)+ROI_ymin;
+    
+    plot(coordinate_set_1_plot_notzoom_mapOnLargeImage(1), coordinate_set_1_plot_notzoom_mapOnLargeImage(2),'.','Color',RGB(l-1,:),'MarkerSize',20)
+end
+xlabel('position (pixels)')
+ylabel('position (pixels)')
+% Save an image of the zoom in XZ projection with the curvature
+print(gcf,'-dtiff', '-r600', ['XZ_TipGlobalSlice_curvature_image_cutoff_',num2str(threshold_perc),'.tif']);
+savefig(['XZ_TipGlobalSlice_curvature_image_cutoff_',num2str(threshold_perc),'.fig'])
+close all
+
+
+% Make an image on the intensity map of the slice of the curvature
+imagesc(rot90(data_pixels_profiles_zstack_rotated_mean))
+hold on
+for l=2:(numel(x_micron_list_SG_filt)-2)
+    %transform coordinates back to the pixel scale (as is the imagesc
+    %command in the line above)
+    coordinate_set_1_plot_notzoom = [x_micron_list_SG_filt(l)/xy_step y_micron_list_SG_filt(l)/z_step];
+    coordinate_set_1_plot_notzoom_mapOnLargeImage(1) = coordinate_set_1_plot_notzoom(1)+ROI_xmin;
+    coordinate_set_1_plot_notzoom_mapOnLargeImage(2) = coordinate_set_1_plot_notzoom(2)+ROI_ymin;
+    
+    plot(coordinate_set_1_plot_notzoom_mapOnLargeImage(1), coordinate_set_1_plot_notzoom_mapOnLargeImage(2),'.','Color',RGB(l-1,:),'MarkerSize',20)
+end
+xlabel('position (pixels)')
+ylabel('position (pixels)')
+% Save an image of the zoom in XZ projection with the curvature
+print(gcf,'-dtiff', '-r600', ['XZ_TipGlobalAll_curvature_image_cutoff_',num2str(threshold_perc),'.tif']);
+savefig(['XZ_TipGlobalAll_curvature_image_cutoff_',num2str(threshold_perc),'.fig'])
+close all
+
+% make a topdown licture as well:
+imagesc(mean(data_pixels_profiles_zstack,3))
+print(gcf,'-dtiff', '-r600', ['XY_TipGlobalAll_curvature_image.tif']);
+savefig(['XY_TipGlobalAll_curvature_image.fig'])
+close all
+
+%% Save all the workspace data %%
+
+save(strcat('Arb_profile_data_XZ',num2str(n_plots_before+1),'.mat'),'slice_analysis_curvature_mean','slice_analysis_curvature_all','positions_line','data_pixels_profiles_zstack_rotated_mean','image_tb_analy','data_pixels_profiles_zstack_rotated', 'img_tb_analy_zstack','n_pixels_side')
+
+save('all_workspace.mat')
+
+%% Move back to the original folder %%
+
+cd(Oldfolder)
