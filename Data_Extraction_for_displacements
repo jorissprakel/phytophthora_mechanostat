@@ -1,0 +1,31 @@
+clear all
+
+% Get a list of all files and folders in this folder.
+files = dir('Spot2*')
+% Get a logical vector that tells which is a directory.
+dirFlags = [files.isdir]
+% Extract only those that are directories.
+subFolders = files(dirFlags)
+
+%where the data will be saved:
+savedir='G:\Thomas van Boxmeer MSc Thesis Data\RawData\Correct_script_Layout\200128\zpos_maps\Roi1_inv_with_overnight\';
+
+
+% (Loop)
+for i=1:numel(subFolders)
+    dirname2=subFolders(i).name;
+    %Save old directory, go to new directory
+    Oldfolder=pwd;
+    cd(dirname2)
+    %Data load
+    load('zpos_FPL_final.mat')
+    imagesc(zpos_FPL_final)
+    pause(1)
+    close
+    %Save data with new name
+    timepoint = strsplit(dirname2,'T');
+    timepoint = timepoint{2};
+    savefilename=strcat(savedir,strcat('T',timepoint,'zpos_FPL_final.mat'));
+    save(savefilename,'zpos_FPL_final')
+    cd(Oldfolder)
+end
