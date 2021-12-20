@@ -1,0 +1,38 @@
+% This code is meant to run after Joris_Colocalization_step2_histogram_Intensity_DisplacementAbs
+% That code has ran a 2 population ttest, we will aggregate the data here
+% in a new array. (as a prep to inculde it into papers)
+
+clear all
+close all
+
+% We search for the files we want in the correct format (each folder
+% contains 1 of these files)
+Ttest_locations = dir('*\DataCell_FluoRenormAbove_FluoRenormAbove_FluoRenormBetween_ForTtests_cutoffpos_0p5_cutoffneg_minus0p5ResultsTtest3.mat');
+
+for i = 1:length(Ttest_locations)
+    % extract
+    name_tb_loaded = Ttest_locations(i).name;
+    direc_tb_loaded = Ttest_locations(i).folder;
+    
+    load(fullfile(direc_tb_loaded,name_tb_loaded))
+    
+    File_names = strsplit(direc_tb_loaded,'\');%split directory at each step
+    File_name = File_names(size(File_names,2));%the last one contains the name
+    
+    % We create some headers for later
+    if i==1
+        saving_array{1,1} = {'Samplename'};
+        saving_array{1,2} = {'testoutcome (1 different, 0 thesame)'};
+        saving_array{1,3} = {'Chance'};
+        saving_array{1,4} = {'Dunno'};
+        saving_array{1,5} = {'DataStruct'};
+    end
+    
+    % dont forget to swtich h1 to h2 and h3, depending on the test :)
+    saving_array{i+1,1} = File_name;
+    saving_array{i+1,2} = h3;
+    saving_array{i+1,3} = p3;
+    saving_array{i+1,4} = ci3;
+    saving_array{i+1,5} = {stats3};
+    
+end
