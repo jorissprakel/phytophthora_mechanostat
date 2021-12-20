@@ -25,5 +25,34 @@ Alpha is computed by (deviding the maximum fluorescent intensity along the entir
 These 3 code sections form the core of the alpha analysis, and was the way how the alpha distributions etc were calculated.
 
 To colocalize displacement and GFP intensity, a set of scripts was developed.
+To be clear, the displacement map etc were first computed using the scripts from the previous paper, which are found at the link above. The goal is to have from thesame Region Of Interest (ROI) 2 files: the displacement map and the GFP intensity (XY projection)
 
-The first script was 
+The first script is called:
+Data_Extraction_for_displacements.m 
+In general, all of the timesteps are saved in a separate folder for each timestep when computing displacement fields. This is a bit annoying to index, so this script finds all the displacement maps in the folders underneath. It then defines a saving goal (t1 folder that will contain multiple timesteps of displacement data), and saves the files under a slightly modified name with an TXXXzpos_FPL_final.mat iterator where XXX is the timestep. This new list is then used in the next script. The script can be modified quite easily to look for other types of files (images, other .mat data).
+
+The second script is called:
+Joris_Colocalization_trial1_timestep_35_200128_Roi1_infestansv2 (name changes with different sampledates/names (timestep is iterator, manually adjusted))
+In short, the code starts by defining where the GFP and zpos (displacement) data are to be found, and the correct timestep. It loads in both datasets, linearises both (from an image to a long vector) and plots them and saves an image of them. Then the code defines x_limits (displacement limits) above/between/below which 3 groups are defined (adhesive/non-interacting/indentive), and extracts the 3 groups of data from both the GFP and displacement maps. Some overlap pictures of 4 groups are made, this is not used in publication but practical information. The original displacement map is replotted in high resolution. The GFP map is replotted as well in the original gray colourmap and saved as figure and .tif format. Then the data is saved as a complete workspace.mat, which is the main output of this script. Note that the workspace saving is a manual operation; this could be improved in the future.
+
+The third script is called:
+Joris_Colocalization_step2_histogram_Intensity_DisplacementAbs.m 
+This code loads in the workspace.mat file as provided by the previous code, removing excess data to clear up memory for the next steps. It makes an histogram of the raw GFP pixel intensities, fits a gaussian fit to these points, and computes a 5 sigma above normal background as the threshold value to establish cellular signal from background. Cellular pixels are then defined as being baoe this threshold, and made relative by deviding each celullar pixel value by the mean of all celullar pixel values. This data is then saved as DataCell_FluoRenorm_zpos_sigma_XXX.mat, does some more (obsolete) statistics to describe the distribution of fluorescence vs displacement, and saves all the data in 'workspace_afterstep2.mat'.
+
+The Fourth script is called:
+Joris_Colocalization_step3_aggregate_Ttest_data.m 
+This script makes an overview of the files saved in the DataCell_FluoRenorm_zpos_sigma_XXX.mat format, loads them in, and structures all the test and puts them in an array called saving_array. This script is obsolete; I have only sved it here so that the stepwise numbering makes sense. Its output is not saved and not needed to run the final analysis.
+
+The fifth script is called:
+Joris_Colocalization_step4_aggregate_disp_fluo_data.m
+This code is written to aggregate the displacement and relatife fluoscence data, to run t-tests etc later on in something called saving_array. Some plots of the data are made for overview purposes. Data is saved in Aggr_Data_RelFluoDispXXX.mat.
+
+The sixth script is called:
+Joris_Colocalization_stepr_aggregate_aggregate_disp_fluo_data.m
+This code is written to aggregate the aggregate of the displacement and relatife fluoscence data, to run t-tests etc later on in something called data_aggr_save. Some plots of the data are made for overview purposes. Data is saved in AllT_AllCells_Data_RelFluoDisp.mat. T-tests were performed in thesame way as Joris_Colocalization_step2_histogram_Intensity_DisplacementAbs.m, but then adapted that script to tests the 3 group of data that were aggregated instead of the data of 1 cell at 1 timepoint.
+
+Naifu invasion
+
+The script is called:
+Code_Arb_Profile_Avg_v2_MinMaxROI_V2
+This script finds all the workspaces defined before by the previous script, and itrates the following process on all of them. It starts by loading in the GFP and Displacement map data. It then deinfes an area in the ROI that will be searched in for the highes and lowest value of displacement (sometimes the ROI contains a spot somewhere were a dead cell has settled, this thwors the code off if no subregion is identified). A linear interpolation between the points of highest and lowest displacement is performed, extended for 30 pixels in both directions and saved. This profile is the input data for the MC algorithmn to fit the Naifu model!
