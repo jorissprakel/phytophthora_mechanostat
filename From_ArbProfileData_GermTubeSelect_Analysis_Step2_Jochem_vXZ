@@ -1,0 +1,85 @@
+%% Profile Extraction Step 2: compensate for the site size %%
+
+clear all
+
+%% Determine the amount of files %%
+
+% Search in the current working directory for files labelled
+% Arb_profile_data_XX.mat. Data generated using From_ArfProfile...Analysis.
+filelist = dir('*XZ1.mat');
+% Each dir entry needs to be loaded in, and do some background correction
+i=1
+%% Load in final data, check%%
+
+max_entry = numel(filelist);  %max_entry is the amount of files loaded in (3 in this case)
+% Load in the final data
+load(strcat(filelist(i).folder,'\',filelist(i).name))
+% In this data, select an area which the germ tube is never present so we
+% can determine the noise thershold to analyse the profile with
+
+data_pixels_profiles = slice_analysis_curvature_mean;
+data_pixels_profiles = data_pixels_profiles_zstack_rotated_mean;
+
+% Plot the image, select an area from it
+getrect = figure; %activate me
+surf(data_pixels_profiles,'edgecolor','none');
+view(2);%rotate surface to view from top
+title('Please draw a rectangle, in background noise area.')
+position_ROI = drawrectangle;
+position_ROI = position_ROI.Position;
+position_ROI = round(position_ROI);
+close(gcf);
+
+xmin = position_ROI(1);
+ymin = position_ROI(2);
+width = position_ROI(3);
+height = position_ROI(4);
+
+%The number of sigma we are in the lognormal distribution
+sigma_number = 5;
+
+
+%% Now run over all the data %%
+
+sample_name = strsplit(filelist(i).name,'.');
+sample_name = sample_name{1};
+
+
+    load(strcat(filelist(i).folder,'\',filelist(i).name))
+    % extract from this dataset the set to analyse for the hist
+    bckgr_data = data_pixels_profiles(ymin:ymin+height,xmin:xmin+width);
+    bckgr_data_vector = reshape(bckgr_data,[],1);
+    % For the fitting, zero values are NOT accepted. Replace 0 with 1.
+    index = bckgr_data_vector==0;
+    bckgr_data_vector=bckgr_data_vector+index;
+    
+    nmbr_point_vec = numel(bckgr_data_vector);
+    nmbr_bins = ceil(sqrt(nmbr_point_vec));
+    % run a normal fittin routine to determine mean and sigma
+    histfit(bckgr_data_vector,nmbr_bins,'lognormal')
+    
+    bckgr_data_fit = fitdist(bckgr_data_vector,'lognormal');
+    mu = bckgr_data_fit.mu;
+    sigma = bckgr_data_fit.sigma;
+    close all
+    bckgr_data_threshold = exp(mu+sigma_number*sigma);
+    data_pixels_profiles_mask = data_pixels_profiles > bckgr_data_threshold;
+    data_pixels_profiles_mask = rot90(data_pixels_profiles_mask);
+    
+    nmbr_cells_per_line = sum(data_pixels_profiles_mask);
+    intensity_per_line = sum(data_pixels_profiles_mask.*rot90(data_pixels_profiles));
+    data_pixels_profiles_mean_weighed = intensity_per_line./nmbr_cells_per_line;
+    save([sample_name 'MaskedData.mat'],'data_pixels_profiles_mean_weighed','bckgr_data_threshold','data_pixels_profiles_mask')
+    % make a plot of the thresholded map
+    imagesc(data_pixels_profiles_mask);
+    view(2);%rotate surface to view from top
+    title(strcat('Thresholdmap for sigma= ',num2str(sigma_number),' , timepoint= ',num2str(i)))
+    colormap gray
+    savename = strcat(sample_name,'maskarea.tif');
+    print(gcf,'-dtiff', '-r600',savename)
+    close all
+    savename2 = strcat(sample_name,'weighedThickness.mat');
+    save(savename2,'data_pixels*')
+
+disp('code completed')
+
