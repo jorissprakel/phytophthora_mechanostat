@@ -1,0 +1,281 @@
+clear all
+
+Listfiles = dir('*Thickness.mat');
+
+%an array to save the slope over time
+
+i=1 % adjust i, which is the xXth file on the list
+%the distance between 2 pixels on analysed segemnt line
+distance = 15;%distance between 2 pixels on analysed segmented line
+load(strcat(Listfiles(i).folder,'\',Listfiles(i).name))
+%the minimal tube length to be analysed (fewer datapoints gives large noise
+%during the linfit procedure.
+tube_lenght_fit_minimum = 80;
+
+%the start pixel of the tube. if you wish to see the data, run the code
+%until:
+imagesc(data_pixels_profiles_mask)
+% we select for the correct point to slice by promting the user:
+% start_tube_x = input('The germ tube starts from this pixel:');
+start_tube_x =170; %decomment this if you wish to make it a constant.
+%The value of start_tube_x is different for every cell.
+
+%i is the timestep
+
+    %Change this if the cell is already horizontal, rot90 fixes it from
+    %vertical to horizontal!!!
+    tb_analy = rot90(data_pixels_profiles);
+    
+%     Load in the data, select the germ tube
+
+%     After germ tube start selection:
+    %we first ensure that the tube is continuous
+    mask_clean = bwmorph(data_pixels_profiles_mask,'majority');
+    imagesc(mask_clean)
+    %then we find the centre line
+    mask_clean_shrunk = bwmorph(mask_clean,'thin',Inf);
+    for_plot_lines = mask_clean_shrunk+data_pixels_profiles_mask;
+    imagesc(for_plot_lines)
+    
+%     %the centreline will always have a shortened tip, we expand the the
+%     %line from the last 2 points onwards to where it would extend out of
+%     %the germ tube
+%     coords_final_point = bwmorph(mask_clean_shrunk,'endpoints');
+%     [coords_final_pointy,coords_final_pointx] = find(coords_final_point==1);
+%         %get the largest y value (most right endpoint)
+%     [endpoint_x,endpoint_y_index] = max(coords_final_pointx);
+%     endpoint_y = coords_final_pointy(endpoint_y_index);
+%     % now we have the position of the right endpoint -> extract the local
+%     % environment en get the extension direction
+%     endpoint_local = mask_clean_shrunk(endpoint_y-1:endpoint_y+1,endpoint_x-1:endpoint_x+1);
+%     % lets get the coords of the point closest to endpoint
+%     %we delete the endpoint and search again for the endpoint, which
+%     %results in the pixel next to the endpoint
+%     coords_final_point_snapped = mask_clean_shrunk;
+%     coords_final_point_snapped(endpoint_y,endpoint_x) = 0;
+%     coords_final_point_snapped = bwmorph(coords_final_point_snapped,'endpoints');
+%     [coords_final_point_snappedy,coords_final_point_snappedx] = find(coords_final_point_snapped==1);
+%     [endpoint_snappedx,endpoint_snappedy_index] = max(coords_final_point_snappedx);
+%     endpoint_snappedy = coords_final_point_snappedy(endpoint_snappedy_index);
+%     %now we have both the coordinates of the last point+penultimate point
+%     %time to extend the line using polyfit. We determine the direction, and
+%     %then extend the line
+%     tb_fitted_x = [endpoint_x,endpoint_snappedx];
+%     tb_fitted_y = [endpoint_y,endpoint_snappedy];
+%     fitp = polyfit(tb_fitted_y,tb_fitted_x,1);%do a linfit
+%     polyval(fitp, endpoint_y:endpoint_y+10);%look 10 points ahead, what are the x,yvalues?
+%     
+%     %uncomment the next lines to check if the graphical extension is okay
+%     imagesc(for_plot_lines)
+%     hold on
+%     %I extend with 10 new coordinates, change this to larger numbers if you
+%     %go to higher resolutions!
+%     line(polyval(fitp, endpoint_y+1:endpoint_y+10),endpoint_y+1:endpoint_y+10,'LineStyle','--','Color','w','LineWidth',3)
+%     
+%     %extend the centre line mask with the extension
+%     mask_clean_shrunk_extended = mask_clean_shrunk;
+%     coords_extension_x = polyval(fitp, endpoint_y+1:endpoint_y+10);
+%     coords_extension_y = endpoint_y+1:endpoint_y+10;
+%     %generate zeros the size of the mask_clean_shrunk, put zeros where the
+%     %extension is
+%     mask_clean_extension = zeros(size(mask_clean_shrunk));
+%     for p=1:numel(coords_extension_y)
+%         mask_clean_extension(coords_extension_y(p),fix(coords_extension_x(p)))=1;
+%     end
+%     mask_clean_shrunk_extended = mask_clean_shrunk+mask_clean_extension;
+    
+    %if no extension is warrented:
+    mask_clean_shrunk_extended = mask_clean_shrunk;
+
+    %now we multiply the extension with the original mask to ensure our
+    %extension does not go outside of the original mask boundary
+    mask_final = mask_clean_shrunk_extended.*data_pixels_profiles_mask;
+    %to check, uncomment the next code
+    for_plot_lines_2 = mask_final+data_pixels_profiles_mask;
+%     imagesc(for_plot_lines_2)
+    
+    % we select for the correct point to slice by promting the user:
+%     start_tube_x = input('The germ tube starts from this pixel:');
+    
+    close all %closes the fit
+    %now we cut off the signal from the cyst by slicing this out
+    mask_final_sliced = mask_final(:,start_tube_x:end);
+    data_sliced = tb_analy(:,start_tube_x:end);
+    
+    %now we need to extract the profile at each position, using the found
+    %line elements as an array. First we extract the array with all the
+    %line coordinates. REMEMBER, we have switched to a new axis system!
+    
+    [ypos_all,xpos_all] = find(mask_final_sliced==1);
+    
+    %now we loop over the coordinates. We use each as a pair
+    saving_data_profile = nan(numel(ypos_all)-distance,2);
+    % we create a new folder to save the data:
+    mkdir(fullfile(Listfiles(i).folder,'\data_movie_tube'))
+    Oldfolder = cd(fullfile(Listfiles(i).folder,'\data_movie_tube'));
+    
+    for k=1:numel(ypos_all)-distance %the last point does not have a neighbour.
+        %we generate the xpos and ypos needed to analyse the line.
+        xpos = xpos_all(k:k+distance);
+        ypos = ypos_all(k:k+distance);
+        
+        %slice out all inbetween values, only use first and last!!!
+        xpos = [xpos(1); xpos(end)];
+        ypos = [ypos(1); ypos(end)];
+        
+        % we plug the data (data_sliced) and xpos and ypos into a function
+        % that computes the mean profile between the pixels.
+        set(0,'DefaultFigureVisible','off');
+        data_profile = Code_Arb_Profile_Avg_complete_function_Jochem_vXZ(data_sliced,xpos,ypos,5);
+        data_profile_mean = mean(data_profile);
+        saving_data_profile(k,1) = k;%the entry one is the position
+        saving_data_profile(k,2) = data_profile_mean;%the entry one is the mean
+        %if you wish to employ a more complicated averaging effort, insert
+        %it here.
+    end
+    
+    close all;
+    set(0,'DefaultFigureVisible','on');
+    
+    cd(Oldfolder)
+    
+    scatter(saving_data_profile(:,1),saving_data_profile(:,2))
+    xlabel('Tube position pixel number')
+    ylabel('avg actin intensity (a.u.) ')
+    title('Intensity over tube plot nd1301')   %change name
+    hold on
+    if numel(saving_data_profile(:,2)) >= 3
+        ylim([0 1.1*max(saving_data_profile(:,2))])
+    end
+    savestring1 = strsplit(Listfiles(i).name,'.');
+    savestring1 = savestring1{1};
+    print(gcf,'-dtiff', '-r600',[savestring1,'Profile_plot.tif'])
+
+   
+    %do a linear fitting on the saving_data_profile data, linear fit of the
+    %dataset, and get the slope.
+    xdata_for_fit = saving_data_profile(:,1);
+    ydata_for_fit = saving_data_profile(:,2);
+    [xData, yData] = prepareCurveData( xdata_for_fit, ydata_for_fit );
+    % Set up fittype and options.
+    ft = fittype( 'poly1' );
+    % Fit model to data.
+    % ydata should contain 2 elements that are not NaN, so we can fit the
+    % data (problem for very short tubes!)
+        [fitresult, gof] = fit( xData, yData, ft );
+        slope_linfit = fitresult.p1; % in intensity gain/pixel
+ 
+        % Plot fit with data.
+        h = plot( fitresult);
+        ylim([0 1.1*max(saving_data_profile(:,2))])
+        print(gcf,'-dtiff', '-r600','Profile_plot_withlinfit.tif')
+        print(gcf,'-dtiff', '-r600',[Listfiles(i).folder,'\Profile_plot_withlinfit_T',num2str(i),'.tif'])
+        
+        %compute the average of the first 10 points (tube length minimum is
+        %10 therefore!)
+        baseline_height = mean(saving_data_profile(1:tube_lenght_fit_minimum,2));
+        maximum_height_fluores = max(saving_data_profile(:,2));
+        %alpha (ratio (max/baseline)-1), expression of polarity of tube
+        alpha_timestep = (maximum_height_fluores/baseline_height)-1;
+        saving(i,3) = baseline_height;
+        saving(i,4) = maximum_height_fluores;
+        saving(i,5) = alpha_timestep;
+        
+        
+  
+    save('all_data_this_timestep.mat')
+   
+    close all
+    
+    imagesc(for_plot_lines_2);
+    axis equal
+    print(gcf,'-dtiff', '-r600','Analysed_area.tif')
+    close all
+    
+    save('all_data_this_timestep.mat')
+    
+
+    %make an image overlay of the grayscale intensity map and the
+    %green/yelow profiles. 
+    close all
+    imagesc(tb_analy);
+    colormap gray
+    hold on    
+    %this is code from stack exchange:
+%     https://nl.mathworks.com/matlabcentral/answers/101738-how-do-i-specify-the-size-of-the-markers-created-by-the-scatter-plot-in-units-proportional-to-the-da
+    s=1;%this sets the markesize    
+    currentunits = get(gca,'Units');
+    set(gca, 'Units', 'Points');
+    axpos = get(gca,'Position');
+    set(gca, 'Units', currentunits);
+    markerWidth = s/diff(xlim)*axpos(3); % Calculate Marker width in points
+    % find entries in mask_clean equal to 1 (masked area), and plot them
+    % over the colormap
+%     [indx,indy] = find(mask_clean==1);
+%     for l=1:numel(indx)
+%         scatter(indy(l),indx(l),'s','filled','MarkerFaceColor','m','MarkerEdgeColor','m','MarkerFaceAlpha',.1,'MarkerEdgeAlpha',.2,'SizeData', markerWidth^2);
+%         hold on
+%     end
+    [indx,indy] = find(mask_clean_shrunk==1);
+    %we only wish to plot point that were used in the analysis!
+    % so values<start_tube_x (x means y, imagesc plot method... :( ) are
+    % ignored
+    indxtrue = indy>=start_tube_x;
+    indx = indx(indxtrue);
+    indy = indy(indxtrue);
+    for l=1:numel(indx)
+        scatter(indy(l),indx(l),'s','filled','MarkerFaceColor','y','MarkerEdgeColor','y','MarkerFaceAlpha',.9,'MarkerEdgeAlpha',.9,'SizeData', (markerWidth^2)*50);
+        hold on
+    end
+    axis tight
+    set(gca,'XTick',[], 'YTick', [])
+    savestring = strsplit(Listfiles(i).name,'.');
+    savestring = savestring{1};
+    print(gcf,'-dtiff', '-r600',[savestring,'finalimage.tif'])
+    close all
+    clearvars -except i Listfiles saving distance tube_lenght_fit_minimum start_tube_x
+    
+
+
+save('output_GermtubeSelect_Step3v3_slopes.mat','saving');
+xlswrite('GermtubeIntensityAnalysisv3.xlsx',saving);
+% close all
+% plot(saving(:,1),saving(:,2),'o')
+% xlabel('timepoint')
+% ylabel('slope linfit (int gain/pix)')
+% title('Slope over time')
+% ylim([0 200])
+% saveas(gcf,['Analysed_Slope_vs_T.fig'])
+% print(gcf,'-dtiff', '-r600',['Analysed_Slope_vs_T.tif'])
+% close all
+
+% 
+% plot(saving(:,1),saving(:,5),'o')
+% xlabel('timepoint')
+% ylabel('alpha ((max/mean)-1)')
+% title('alpha over time')
+% ylim([0 2]) %for now
+% saveas(gcf,['Analysed_Alpha_vs_T.fig'])
+% print(gcf,'-dtiff', '-r600',['Analysed_Alpha_vs_T.tif'])
+% close all
+
+
+% 
+% 
+% ratio_renorm = saving(:,3)./mean(saving(1:3,3));
+% 
+% plot(saving(:,3),'DisplayName','Max/Avg')
+% legend
+% xlabel('Timestep');
+% print(gcf,'-dtiff', '-r600','GermtubeIntensityAnalysisv2.tif')
+% 
+% 
+% plot(1:numel(ratio_renorm),ratio_renorm,'DisplayName','Max/Avg Renorm')
+% legend off
+% xlabel('Timestep');
+% ylabel('Ratio');
+% box on
+% ylim([0.8 2.2]);
+% print(gcf,'-dtiff', '-r600','GermtubeIntensityAnalysisRenormv2.tif')
+% 
+% close all
