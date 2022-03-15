@@ -2,6 +2,8 @@
 
 Dear reader, this is the Readme file accompanying the publication in regards to mechano feedback btween the actin cytoskeleton and invasive stress generation of Phytophthora infestans hyphae. This is an README file describing all codes published on this git directory. We stress that some of the input data (displacement maps, Naifu model) is hosted in another git, namely: https://github.com/jorissprakel/Phytopthora_invasion
 
+An image of these files has been mirrored on Zenodo: https://zenodo.org/badge/latestdoi/431063763
+
 The input data forall matlab analysis is .tif format images (lossless saves from .nd2 original data format), imaged using a nikon C2 confocal using 60x magnification objectives in general. The following scripts work as an expansion on the previous publications set to work with establishing colocalizations and intensity profiles of the hyphal tube. We stress that ImageJ (Fiji) was used in most cases for simple max projection/visualization purposes, and Origin to plot datapoints in a clear format. 
 
 To obtain XZ projections of hyphae and track the intensity, we developed a software called TubeAnalyser (TubeAnal for short) that loads in a local ROI z-stack, computes the XZ projection (amongs others), defines a centreline from the hyphae and walks along that centreline with a frame record the intensity along the hyphae. The code is elobarately described in the scripts itself as well; feel free to adapt and change. Some of the scripts require packages (i.e. bwmorph functions are employed), my apologies.
